@@ -16,6 +16,11 @@ type Vec2
     = Vec2 Float Float
 
 
+null : Vec2
+null =
+    Vec2 0 0
+
+
 add : Vec2 -> Vec2 -> Vec2
 add =
     map2 (+)
