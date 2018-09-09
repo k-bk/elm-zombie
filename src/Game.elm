@@ -3,38 +3,46 @@ module Game exposing (..)
 import Browser
 import Browser.Events
 import Html exposing (Html, div, text)
+import List
+import Dict exposing (Dict)
 import Vector2 as Vec2 exposing (Vec2(..))
+import Time
 
 
 -- MODEL
 
 
 type alias Model =
-    { player : Player
-    , oldModel : Model
-    , time : Time
+    { movable : List Movable
+    , timeDelta : Time
     }
 
 
-type alias Player =
-    { position : Vec2
-    }
+type alias Id =
+    Int
+
+
+type alias Time =
+    Float
 
 
 type alias Movable =
     { position : Vec2
     , speed : Float
+    , direction : Vec2
+    , commands : List Command
     }
+
+
+type Command
+    = Move Vec2
 
 
 initModel : Model
 initModel =
-    let
-        initPlayer =
-            { position = Vec2 0 0 }
-    in
-        { player = initPlayer
-        }
+    { movable = []
+    , timeDelta = 0
+    }
 
 
 init : () -> ( Model, Cmd msg )
@@ -53,38 +61,23 @@ type Msg
 
 type Button
     = Arrow Direction
-    | Shoot
     | Other
-
-
-type alias Time =
-    Float
 
 
 update : Msg -> Model -> ( Model, Cmd msg )
 update msg model =
     case msg of
         Input button ->
-            ( { model | input = button :: model.input }, Cmd.none )
+            ( model, Cmd.none )
 
-        Tick time ->
-            ( { model | oldModel = model, time = time }, Cmd.none )
-
-
-move : Movable -> Vec2 -> Time -> Movable
-move movable direction dt =
-    { movable
-        | position = Vec2.scale (movable.speed * dt) direction
-    }
+        Tick timeDelta ->
+            ( { model | timeDelta = timeDelta }, Cmd.none )
 
 
 manageInput : Button -> Model -> Model
 manageInput button model =
     case button of
         Arrow direction ->
-            model
-
-        Shoot ->
             model
 
         Other ->
@@ -95,10 +88,15 @@ manageInput button model =
 -- SUBSCRIPTIONS
 
 
-subscriptions : Model -> Sub msg
+subscriptions : Model -> Sub Msg
 subscriptions model =
-    Sub.batch
-        []
+    let
+        newTick delta =
+            Tick (delta / 1000)
+    in
+        Sub.batch
+            [ Browser.Events.onAnimationFrameDelta newTick
+            ]
 
 
 
@@ -108,11 +106,11 @@ subscriptions model =
 view : Model -> Html msg
 view model =
     let
-        player =
-            model.player
+        debugInfo =
+            "dt: " ++ String.fromFloat model.timeDelta
     in
         div []
-            [ Html.text "hello"
+            [ Html.text debugInfo
             ]
 
 
@@ -138,19 +136,3 @@ type Direction
     | Down
     | Left
     | Right
-
-
-toVector : Direction -> Vec2
-toVector dir =
-    case dir of
-        Up ->
-            Vec2 0 1
-
-        Down ->
-            Vec2 0 -1
-
-        Left ->
-            Vec2 -1 0
-
-        Right ->
-            Vec2 1 0
