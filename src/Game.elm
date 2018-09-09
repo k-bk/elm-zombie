@@ -3,22 +3,38 @@ module Game exposing (..)
 import Browser
 import Browser.Events
 import Html exposing (Html, div, text)
+import Vector2 as Vec2 exposing (Vec2(..))
 
 
 -- MODEL
 
 
 type alias Model =
-    { player : Player }
+    { player : Player
+    , oldModel : Model
+    , time : Time
+    }
 
 
 type alias Player =
-    ( Int, Int )
+    { position : Vec2
+    }
+
+
+type alias Movable =
+    { position : Vec2
+    , speed : Float
+    }
 
 
 initModel : Model
 initModel =
-    Model ( 1, 1 )
+    let
+        initPlayer =
+            { position = Vec2 0 0 }
+    in
+        { player = initPlayer
+        }
 
 
 init : () -> ( Model, Cmd msg )
@@ -32,7 +48,7 @@ init _ =
 
 type Msg
     = Input Button
-    | None
+    | Tick Time
 
 
 type Button
@@ -41,14 +57,25 @@ type Button
     | Other
 
 
+type alias Time =
+    Float
+
+
 update : Msg -> Model -> ( Model, Cmd msg )
 update msg model =
     case msg of
         Input button ->
-            ( manageInput button model, Cmd.none )
+            ( { model | input = button :: model.input }, Cmd.none )
 
-        None ->
-            ( model, Cmd.none )
+        Tick time ->
+            ( { model | oldModel = model, time = time }, Cmd.none )
+
+
+move : Movable -> Vec2 -> Time -> Movable
+move movable direction dt =
+    { movable
+        | position = Vec2.scale (movable.speed * dt) direction
+    }
 
 
 manageInput : Button -> Model -> Model
@@ -80,9 +107,13 @@ subscriptions model =
 
 view : Model -> Html msg
 view model =
-    div []
-        [ Html.text "hello"
-        ]
+    let
+        player =
+            model.player
+    in
+        div []
+            [ Html.text "hello"
+            ]
 
 
 
@@ -96,3 +127,30 @@ main =
         , subscriptions = subscriptions
         , view = view
         }
+
+
+
+-- DIRECTION
+
+
+type Direction
+    = Up
+    | Down
+    | Left
+    | Right
+
+
+toVector : Direction -> Vec2
+toVector dir =
+    case dir of
+        Up ->
+            Vec2 0 1
+
+        Down ->
+            Vec2 0 -1
+
+        Left ->
+            Vec2 -1 0
+
+        Right ->
+            Vec2 1 0
