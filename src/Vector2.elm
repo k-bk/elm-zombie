@@ -7,6 +7,7 @@ module Vector2
         , add
         , sub
         , scale
+        , null
         )
 
 -- VECTOR2
