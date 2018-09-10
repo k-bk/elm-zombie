@@ -1,11 +1,13 @@
 module Game exposing (..)
 
 import Browser
-import Browser.Events
+import Browser.Events exposing (Visibility)
 import Debug
 import Html exposing (Html, div, text)
 import Json.Decode as Decode
 import List
+import Svg exposing (svg, rect)
+import Svg.Attributes as A
 import Vector2 as Vec2 exposing (Vec2(..))
 
 
@@ -14,9 +16,11 @@ import Vector2 as Vec2 exposing (Vec2(..))
 
 type alias Model =
     { dynamic : List Dynamic
+    , player : Dynamic
     , timeDelta : Time
     , input : List Key
-    , movementVector : Vec2
+    , movementVector : Vec2 -- for debug purposes
+    , focusCheck : Int -- for debug purposes
     }
 
 
@@ -38,9 +42,11 @@ type alias Dynamic =
 initModel : Model
 initModel =
     { dynamic = []
+    , player = Dynamic Vec2.null 2 Vec2.null
     , timeDelta = 0
     , input = []
     , movementVector = Vec2.null
+    , focusCheck = 0
     }
 
 
@@ -57,6 +63,7 @@ type Msg
     = KeyDown Key
     | KeyUp Key
     | Tick Time
+    | FocusChange
 
 
 type Key
@@ -95,6 +102,9 @@ updateInput msg model =
             KeyUp key ->
                 { model | input = removeKey key model.input }
 
+            FocusChange ->
+                { model | focusCheck = model.focusCheck + 1 }
+
             _ ->
                 model
 
@@ -112,6 +122,9 @@ updateTime msg model =
 updatePlayer : Msg -> Model -> Model
 updatePlayer msg model =
     let
+        player =
+            model.player
+
         addToVector key vector =
             case key of
                 Arrow direction ->
@@ -122,8 +135,16 @@ updatePlayer msg model =
 
         updateMovementVector list =
             List.foldl addToVector (Vec2.null) list
+
+        scaledMovement =
+            updateMovementVector model.input
+                |> Vec2.scale player.speed
+                |> Vec2.scale model.timeDelta
+
+        updatePosition position =
+            { player | position = position }
     in
-        { model | movementVector = updateMovementVector model.input }
+        { model | player = updatePosition <| Vec2.add player.position scaledMovement }
 
 
 
@@ -160,6 +181,7 @@ subscriptions model =
             [ Browser.Events.onAnimationFrameDelta newTick
             , Sub.map KeyDown <| Browser.Events.onKeyDown decodeKeys
             , Sub.map KeyUp <| Browser.Events.onKeyUp decodeKeys
+            , Browser.Events.onVisibilityChange (\_ -> FocusChange)
             ]
 
 
@@ -175,7 +197,30 @@ view model =
     in
         div []
             [ Html.text (Debug.toString model)
+            , viewMap model
             ]
+
+
+viewMap : Model -> Html msg
+viewMap model =
+    let
+        scale =
+            10
+
+        player =
+            model.player
+
+        box (Vec2 x y) ( width, height ) =
+            rect
+                [ A.x <| String.fromFloat (x * scale)
+                , A.y <| String.fromFloat (y * scale)
+                , A.width <| String.fromFloat (width * scale)
+                , A.height <| String.fromFloat (height * scale)
+                ]
+                []
+    in
+        svg [ A.viewBox "0 0 640 480" ]
+            [ box player.position ( 1, 2 ) ]
 
 
 
