@@ -1,14 +1,4 @@
-module Vector2
-    exposing
-        ( Vec2(..)
-        , map
-        , map2
-        , toString
-        , add
-        , sub
-        , scale
-        , null
-        )
+module Vector2 exposing (..)
 
 -- VECTOR2
 
@@ -20,6 +10,29 @@ type Vec2
 null : Vec2
 null =
     Vec2 0 0
+
+
+normalize : Vec2 -> Vec2
+normalize vector =
+    if length vector < 0.001 then
+        null
+    else
+        scale (1 / length vector) vector
+
+
+getX : Vec2 -> Float
+getX (Vec2 x _) =
+    x
+
+
+getY : Vec2 -> Float
+getY (Vec2 _ y) =
+    y
+
+
+length : Vec2 -> Float
+length (Vec2 x y) =
+    sqrt <| x * x + y * y
 
 
 add : Vec2 -> Vec2 -> Vec2
@@ -42,8 +55,8 @@ dot (Vec2 x1 y1) (Vec2 x2 y2) =
     x1 * x2 + y1 * y2
 
 
-neg : Vec2 -> Vec2
-neg =
+negate : Vec2 -> Vec2
+negate =
     map (\x -> -x)
 
 
