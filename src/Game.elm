@@ -4,9 +4,10 @@ import Browser
 import Browser.Events exposing (Visibility)
 import Debug
 import Html exposing (Html, div, text)
+import Html.Attributes exposing (style)
 import Json.Decode as Decode
 import List
-import Svg exposing (svg, rect)
+import Svg exposing (Svg, svg, rect)
 import Svg.Attributes as A
 import Vector2 as Vec2 exposing (Vec2(..))
 
@@ -18,8 +19,8 @@ type alias Model =
     { dynamic : List Dynamic
     , player : Dynamic
     , timeDelta : Time
+    , timeDeltaHistory : List Time
     , input : List Key
-    , movementVector : Vec2 -- for debug purposes
     , focusCheck : Int -- for debug purposes
     }
 
@@ -36,16 +37,18 @@ type alias Dynamic =
     { position : Vec2
     , speed : Float
     , direction : Vec2
+    , width : Float
+    , height : Float
     }
 
 
 initModel : Model
 initModel =
     { dynamic = []
-    , player = Dynamic Vec2.null 2 Vec2.null
+    , player = Dynamic Vec2.null 5 Vec2.null 1 3
     , timeDelta = 0
+    , timeDeltaHistory = []
     , input = []
-    , movementVector = Vec2.null
     , focusCheck = 0
     }
 
@@ -113,7 +116,12 @@ updateTime : Msg -> Model -> Model
 updateTime msg model =
     case msg of
         Tick timeDelta ->
-            { model | timeDelta = timeDelta }
+            { model
+                | timeDelta = timeDelta
+                , timeDeltaHistory =
+                    List.take 15
+                        (timeDelta :: model.timeDeltaHistory)
+            }
 
         _ ->
             model
@@ -138,6 +146,7 @@ updatePlayer msg model =
 
         scaledMovement =
             updateMovementVector model.input
+                |> Vec2.normalize
                 |> Vec2.scale player.speed
                 |> Vec2.scale model.timeDelta
 
@@ -192,35 +201,45 @@ subscriptions model =
 view : Model -> Html msg
 view model =
     let
+        debugFPS =
+            toFloat (List.length model.timeDeltaHistory) / List.sum model.timeDeltaHistory
+
         debugInfo =
-            "dt: " ++ String.fromFloat model.timeDelta
+            "FPS: " ++ String.fromInt (round debugFPS)
     in
-        div []
-            [ Html.text (Debug.toString model)
-            , viewMap model
+        div
+            [ style "width" "640px"
+            , style "height" "480px"
+            ]
+            [ viewMap model
+            , Html.text debugInfo
+            , Html.text (Debug.toString model)
             ]
 
 
 viewMap : Model -> Html msg
 viewMap model =
+    svg [ A.viewBox "0 0 20 15" ]
+        [ viewDynamics model ]
+
+
+viewDynamics : Model -> Svg msg
+viewDynamics model =
     let
-        scale =
-            10
+        allDynamic =
+            model.player :: model.dynamic
 
-        player =
-            model.player
-
-        box (Vec2 x y) ( width, height ) =
+        box { position, width, height } =
             rect
-                [ A.x <| String.fromFloat (x * scale)
-                , A.y <| String.fromFloat (y * scale)
-                , A.width <| String.fromFloat (width * scale)
-                , A.height <| String.fromFloat (height * scale)
+                [ A.x <| String.fromFloat <| Vec2.getX position
+                , A.y <| String.fromFloat <| Vec2.getY <| Vec2.negate position
+                , A.width <| String.fromFloat width
+                , A.height <| String.fromFloat height
                 ]
                 []
     in
-        svg [ A.viewBox "0 0 640 480" ]
-            [ box player.position ( 1, 2 ) ]
+        svg []
+            (List.map box allDynamic)
 
 
 
