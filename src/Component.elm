@@ -138,11 +138,6 @@ getComponent componentType ( _, list ) =
     List.head <| List.filter (isOfType componentType) list
 
 
-hasComponent : Component -> Entity -> Bool
-hasComponent componentType ( _, list ) =
-    List.any (isOfType componentType) list
-
-
 
 -- TESTING FUNCTIONS
 

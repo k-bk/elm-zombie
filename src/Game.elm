@@ -8,7 +8,6 @@ import Component
         , Component(..)
         , getComponent
         , updateComponent
-        , hasComponent
         )
 import Debug
 import Html exposing (Html, div, text)
