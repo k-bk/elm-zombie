@@ -45,7 +45,7 @@ initModel =
         player =
             ( 1
             , [ Position (Vec2 1 2)
-              , Speed 3
+              , Speed 5
               , Movement Vec2.null
               , Width 1
               , Height 2
@@ -55,7 +55,7 @@ initModel =
 
         flyingBird =
             ( 2
-            , [ Position (Vec2 0 -5)
+            , [ Position (Vec2 0 5)
               , Speed 5
               , Movement (Vec2 1 0)
               , Width 2
@@ -96,11 +96,18 @@ update : Msg -> Model -> ( Model, Cmd msg )
 update msg model =
     let
         newModel =
-            model
-                |> updateInput msg
-                |> updateTime msg
-                |> updateControllables msg
-                |> updateDynamics msg
+            case msg of
+                Tick timeDelta ->
+                    -- update time sync things
+                    model
+                        |> updateTime msg
+                        |> updateControllables msg
+                        |> updateDynamics msg
+
+                _ ->
+                    -- update frame async things
+                    model
+                        |> updateInput msg
     in
         ( newModel, Cmd.none )
 
@@ -144,20 +151,6 @@ updateTime msg model =
 
         _ ->
             model
-
-
-keysToVector : List Key -> Vec2
-keysToVector keyList =
-    let
-        addToVector key vector =
-            case key of
-                Arrow direction ->
-                    Vec2.add (toVector direction) vector
-
-                _ ->
-                    vector
-    in
-        List.foldl addToVector (Vec2.null) keyList
 
 
 updateControllables : Msg -> Model -> Model
@@ -297,7 +290,7 @@ viewBox entity =
             Just
                 (rect
                     [ A.x <| String.fromFloat <| Vec2.getX position
-                    , A.y <| String.fromFloat <| Vec2.getY <| Vec2.negate position
+                    , A.y <| String.fromFloat <| Vec2.getY position
                     , A.width <| String.fromFloat width
                     , A.height <| String.fromFloat height
                     ]
@@ -336,16 +329,30 @@ toVector : Direction -> Vec2
 toVector direction =
     case direction of
         Up ->
-            Vec2 0 1
+            Vec2 0 -1
 
         Down ->
-            Vec2 0 -1
+            Vec2 0 1
 
         Right ->
             Vec2 1 0
 
         Left ->
             Vec2 -1 0
+
+
+keysToVector : List Key -> Vec2
+keysToVector keyList =
+    let
+        addToVector key vector =
+            case key of
+                Arrow direction ->
+                    Vec2.add (toVector direction) vector
+
+                _ ->
+                    vector
+    in
+        List.foldl addToVector (Vec2.null) keyList
 
 
 
