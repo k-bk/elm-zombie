@@ -42,19 +42,28 @@ type alias Time =
 initModel : Model
 initModel =
     let
-        player : Entity
         player =
             ( 1
             , [ Position (Vec2 1 2)
               , Speed 3
-              , Direction Vec2.null
+              , Movement Vec2.null
               , Width 1
               , Height 2
               , Controllable
               ]
             )
+
+        flyingBird =
+            ( 2
+            , [ Position (Vec2 0 -5)
+              , Speed 5
+              , Movement (Vec2 1 0)
+              , Width 2
+              , Height 0.5
+              ]
+            )
     in
-        { entities = [ player ]
+        { entities = [ player, flyingBird ]
         , timeDelta = 0
         , timeDeltaHistory = []
         , input = []
@@ -90,7 +99,8 @@ update msg model =
             model
                 |> updateInput msg
                 |> updateTime msg
-                |> updatePlayer msg
+                |> updateControllables msg
+                |> updateDynamics msg
     in
         ( newModel, Cmd.none )
 
@@ -150,33 +160,59 @@ keysToVector keyList =
         List.foldl addToVector (Vec2.null) keyList
 
 
-updatePlayer : Msg -> Model -> Model
-updatePlayer msg model =
+updateControllables : Msg -> Model -> Model
+updateControllables msg model =
     let
-        movement =
+        newMovement =
             keysToVector model.input
                 |> Vec2.normalize
-                |> Vec2.scale model.timeDelta
     in
-        { model
-            | entities =
-                List.map (updateControllable movement) model.entities
-        }
+        { model | entities = List.map (updateControllable newMovement) model.entities }
 
 
-updateControllable : Vec2 -> Entity -> Entity
-updateControllable movement entity =
+updateDynamics : Msg -> Model -> Model
+updateDynamics msg model =
+    { model | entities = List.map (updateDynamic model.timeDelta) model.entities }
+
+
+
+-- Dynamic entity has Position, Speed and Movement
+
+
+updateDynamic : Time -> Entity -> Entity
+updateDynamic timeDelta entity =
     case
         ( getComponent Component.position entity
         , getComponent Component.speed entity
-        , getComponent Component.controllable entity
+        , getComponent Component.movement entity
         )
     of
-        ( Just (Position position), Just (Speed speed), Just Controllable ) ->
-            Vec2.scale speed movement
+        ( Just (Position position), Just (Speed speed), Just (Movement movement) ) ->
+            movement
+                |> Vec2.scale speed
+                |> Vec2.scale timeDelta
                 |> Vec2.add position
                 |> Position
                 |> updateComponent Component.position entity
+
+        _ ->
+            entity
+
+
+
+-- Controllable entity has Movement which changes
+-- according to input
+
+
+updateControllable : Vec2 -> Entity -> Entity
+updateControllable newMovement entity =
+    case
+        ( getComponent Component.controllable entity
+        , getComponent Component.movement entity
+        )
+    of
+        ( Just Controllable, Just (Movement movement) ) ->
+            updateComponent Component.movement entity (Movement newMovement)
 
         _ ->
             entity
