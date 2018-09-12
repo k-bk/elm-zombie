@@ -2,6 +2,14 @@ module Game exposing (..)
 
 import Browser
 import Browser.Events exposing (Visibility)
+import Component
+    exposing
+        ( Entity
+        , Component(..)
+        , getComponent
+        , updateComponent
+        , hasComponent
+        )
 import Debug
 import Html exposing (Html, div, text)
 import Html.Attributes exposing (style)
@@ -16,8 +24,7 @@ import Vector2 as Vec2 exposing (Vec2(..))
 
 
 type alias Model =
-    { dynamic : List Dynamic
-    , player : Dynamic
+    { entities : List Entity
     , timeDelta : Time
     , timeDeltaHistory : List Time
     , input : List Key
@@ -33,24 +40,27 @@ type alias Time =
     Float
 
 
-type alias Dynamic =
-    { position : Vec2
-    , speed : Float
-    , direction : Vec2
-    , width : Float
-    , height : Float
-    }
-
-
 initModel : Model
 initModel =
-    { dynamic = []
-    , player = Dynamic Vec2.null 5 Vec2.null 1 3
-    , timeDelta = 0
-    , timeDeltaHistory = []
-    , input = []
-    , focusCheck = 0
-    }
+    let
+        player : Entity
+        player =
+            ( 1
+            , [ Position (Vec2 1 2)
+              , Speed 3
+              , Direction Vec2.null
+              , Width 1
+              , Height 2
+              , Controllable
+              ]
+            )
+    in
+        { entities = [ player ]
+        , timeDelta = 0
+        , timeDeltaHistory = []
+        , input = []
+        , focusCheck = 0
+        }
 
 
 init : () -> ( Model, Cmd msg )
@@ -127,12 +137,9 @@ updateTime msg model =
             model
 
 
-updatePlayer : Msg -> Model -> Model
-updatePlayer msg model =
+keysToVector : List Key -> Vec2
+keysToVector keyList =
     let
-        player =
-            model.player
-
         addToVector key vector =
             case key of
                 Arrow direction ->
@@ -140,20 +147,40 @@ updatePlayer msg model =
 
                 _ ->
                     vector
-
-        updateMovementVector list =
-            List.foldl addToVector (Vec2.null) list
-
-        scaledMovement =
-            updateMovementVector model.input
-                |> Vec2.normalize
-                |> Vec2.scale player.speed
-                |> Vec2.scale model.timeDelta
-
-        updatePosition position =
-            { player | position = position }
     in
-        { model | player = updatePosition <| Vec2.add player.position scaledMovement }
+        List.foldl addToVector (Vec2.null) keyList
+
+
+updatePlayer : Msg -> Model -> Model
+updatePlayer msg model =
+    let
+        movement =
+            keysToVector model.input
+                |> Vec2.normalize
+                |> Vec2.scale model.timeDelta
+    in
+        { model
+            | entities =
+                List.map (updateControllable movement) model.entities
+        }
+
+
+updateControllable : Vec2 -> Entity -> Entity
+updateControllable movement entity =
+    case
+        ( getComponent Component.position entity
+        , getComponent Component.speed entity
+        , getComponent Component.controllable entity
+        )
+    of
+        ( Just (Position position), Just (Speed speed), Just Controllable ) ->
+            Vec2.scale speed movement
+                |> Vec2.add position
+                |> Position
+                |> updateComponent Component.position entity
+
+        _ ->
+            entity
 
 
 
@@ -220,26 +247,30 @@ view model =
 viewMap : Model -> Html msg
 viewMap model =
     svg [ A.viewBox "0 0 20 15" ]
-        [ viewDynamics model ]
+        (onlyValues <| List.map viewBox model.entities)
 
 
-viewDynamics : Model -> Svg msg
-viewDynamics model =
-    let
-        allDynamic =
-            model.player :: model.dynamic
+viewBox : Entity -> Maybe (Svg msg)
+viewBox entity =
+    case
+        ( getComponent Component.position entity
+        , getComponent Component.width entity
+        , getComponent Component.height entity
+        )
+    of
+        ( Just (Position position), Just (Width width), Just (Height height) ) ->
+            Just
+                (rect
+                    [ A.x <| String.fromFloat <| Vec2.getX position
+                    , A.y <| String.fromFloat <| Vec2.getY <| Vec2.negate position
+                    , A.width <| String.fromFloat width
+                    , A.height <| String.fromFloat height
+                    ]
+                    []
+                )
 
-        box { position, width, height } =
-            rect
-                [ A.x <| String.fromFloat <| Vec2.getX position
-                , A.y <| String.fromFloat <| Vec2.getY <| Vec2.negate position
-                , A.width <| String.fromFloat width
-                , A.height <| String.fromFloat height
-                ]
-                []
-    in
-        svg []
-            (List.map box allDynamic)
+        _ ->
+            Nothing
 
 
 
@@ -280,3 +311,20 @@ toVector direction =
 
         Left ->
             Vec2 -1 0
+
+
+
+-- OTHER
+
+
+onlyValues : List (Maybe a) -> List a
+onlyValues list =
+    case list of
+        (Just value) :: tail ->
+            value :: onlyValues tail
+
+        Nothing :: tail ->
+            onlyValues tail
+
+        [] ->
+            []
