@@ -4,13 +4,12 @@ module Component
         , Component(..)
         , position
         , speed
-        , direction
+        , movement
         , width
         , height
         , controllable
         , getComponent
         , updateComponent
-        , hasComponent
         )
 
 import Debug
@@ -55,7 +54,7 @@ type alias Entity =
 type Component
     = Position Vec2
     | Speed Float
-    | Direction Vec2
+    | Movement Vec2
     | Width Float
     | Height Float
     | Controllable
@@ -71,9 +70,9 @@ speed =
     Speed 0.0
 
 
-direction : Component
-direction =
-    Direction Vec2.null
+movement : Component
+movement =
+    Movement Vec2.null
 
 
 width : Component
@@ -100,7 +99,7 @@ isOfType type1 type2 =
         ( Speed _, Speed _ ) ->
             True
 
-        ( Direction _, Direction _ ) ->
+        ( Movement _, Movement _ ) ->
             True
 
         ( Width _, Width _ ) ->
