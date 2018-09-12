@@ -1,5 +1,20 @@
-module Component exposing (Entity, Component, position, speed, hasComponent)
+module Component
+    exposing
+        ( Entity
+        , Component(..)
+        , position
+        , speed
+        , direction
+        , width
+        , height
+        , controllable
+        , getComponent
+        , updateComponent
+        , hasComponent
+        )
 
+import Debug
+import Html
 import List
 import Vector2 as Vec2 exposing (Vec2(..))
 
@@ -40,6 +55,10 @@ type alias Entity =
 type Component
     = Position Vec2
     | Speed Float
+    | Direction Vec2
+    | Width Float
+    | Height Float
+    | Controllable
 
 
 position : Component
@@ -52,21 +71,76 @@ speed =
     Speed 0.0
 
 
-hasComponent : Component -> Entity -> Bool
-hasComponent component ( _, list ) =
+direction : Component
+direction =
+    Direction Vec2.null
+
+
+width : Component
+width =
+    Width 0.0
+
+
+height : Component
+height =
+    Height 0.0
+
+
+controllable : Component
+controllable =
+    Controllable
+
+
+isOfType : Component -> Component -> Bool
+isOfType type1 type2 =
+    case ( type1, type2 ) of
+        ( Position _, Position _ ) ->
+            True
+
+        ( Speed _, Speed _ ) ->
+            True
+
+        ( Direction _, Direction _ ) ->
+            True
+
+        ( Width _, Width _ ) ->
+            True
+
+        ( Height _, Height _ ) ->
+            True
+
+        ( Controllable, Controllable ) ->
+            True
+
+        _ ->
+            False
+
+
+updateComponent : Component -> Entity -> Component -> Entity
+updateComponent componentType ( id, components ) newValue =
     let
-        checkComponent with =
-            case ( component, with ) of
-                ( Position _, Position _ ) ->
-                    True
+        updateList list =
+            case list of
+                component :: rest ->
+                    if isOfType componentType component then
+                        newValue :: rest
+                    else
+                        component :: (updateList rest)
 
-                ( Speed _, Speed _ ) ->
-                    True
-
-                _ ->
-                    False
+                [] ->
+                    []
     in
-        List.any checkComponent list
+        ( id, updateList components )
+
+
+getComponent : Component -> Entity -> Maybe Component
+getComponent componentType ( _, list ) =
+    List.head <| List.filter (isOfType componentType) list
+
+
+hasComponent : Component -> Entity -> Bool
+hasComponent componentType ( _, list ) =
+    List.any (isOfType componentType) list
 
 
 
@@ -83,9 +157,5 @@ testList =
     ]
 
 
-takeWithPosition =
-    List.filter (hasComponent position) testList
-
-
-takeWithSpeed =
-    List.filter (hasComponent speed) testList
+main =
+    Html.text "Component test"
