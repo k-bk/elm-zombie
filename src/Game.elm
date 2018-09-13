@@ -27,7 +27,6 @@ type alias Model =
     , timeDelta : Time
     , timeDeltaHistory : List Time
     , input : List Key
-    , focusCheck : Int -- for debug purposes
     }
 
 
@@ -45,7 +44,7 @@ initModel =
         player =
             ( 1
             , [ Position (Vec2 1 2)
-              , Speed 10
+              , Speed 3
               , Movement Vec2.null
               , Box 1 2
               , Controllable
@@ -82,7 +81,6 @@ initModel =
         , timeDelta = 0
         , timeDeltaHistory = []
         , input = []
-        , focusCheck = 0
         }
 
 
@@ -99,7 +97,6 @@ type Msg
     = KeyDown Key
     | KeyUp Key
     | Tick Time
-    | FocusChange
 
 
 type Key
@@ -145,9 +142,6 @@ updateInput msg model =
 
             KeyUp key ->
                 { model | input = removeKey key model.input }
-
-            FocusChange ->
-                { model | focusCheck = model.focusCheck + 1 }
 
             _ ->
                 model
@@ -344,7 +338,6 @@ subscriptions model =
             [ Browser.Events.onAnimationFrameDelta newTick
             , Sub.map KeyDown <| Browser.Events.onKeyDown decodeKeys
             , Sub.map KeyUp <| Browser.Events.onKeyUp decodeKeys
-            , Browser.Events.onVisibilityChange (\_ -> FocusChange)
             ]
 
 
@@ -367,7 +360,7 @@ view model =
             ]
             [ viewMap model
             , Html.text debugInfo
-            , Html.text (Debug.toString model)
+            , Html.text (Debug.toString model.input)
             ]
 
 
