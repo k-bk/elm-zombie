@@ -5,8 +5,7 @@ module Component
         , position
         , speed
         , movement
-        , width
-        , height
+        , box
         , controllable
         , getComponent
         , updateComponent
@@ -55,8 +54,7 @@ type Component
     = Position Vec2
     | Speed Float
     | Movement Vec2
-    | Width Float
-    | Height Float
+    | Box Float Float
     | Controllable
 
 
@@ -75,14 +73,9 @@ movement =
     Movement Vec2.null
 
 
-width : Component
-width =
-    Width 0.0
-
-
-height : Component
-height =
-    Height 0.0
+box : Component
+box =
+    Box 0 0
 
 
 controllable : Component
@@ -102,10 +95,7 @@ isOfType type1 type2 =
         ( Movement _, Movement _ ) ->
             True
 
-        ( Width _, Width _ ) ->
-            True
-
-        ( Height _, Height _ ) ->
+        ( Box _ _, Box _ _ ) ->
             True
 
         ( Controllable, Controllable ) ->

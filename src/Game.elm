@@ -45,10 +45,9 @@ initModel =
         player =
             ( 1
             , [ Position (Vec2 1 2)
-              , Speed 5
+              , Speed 10
               , Movement Vec2.null
-              , Width 1
-              , Height 2
+              , Box 1 2
               , Controllable
               ]
             )
@@ -56,14 +55,30 @@ initModel =
         flyingBird =
             ( 2
             , [ Position (Vec2 0 5)
-              , Speed 5
+              , Speed 0
               , Movement (Vec2 1 0)
-              , Width 2
-              , Height 0.5
+              , Box 2 0.5
+              ]
+            )
+
+        block x y id =
+            ( id
+            , [ Position (Vec2 x y)
+              , Speed 0
+              , Movement Vec2.null
+              , Box 1 1
               ]
             )
     in
-        { entities = [ player, flyingBird ]
+        { entities =
+            [ player
+            , flyingBird
+            , block 2 2 3
+            , block 2 3 4
+            , block 5 5 5
+            , block 5 6 6
+            , block 7 8 7
+            ]
         , timeDelta = 0
         , timeDeltaHistory = []
         , input = []
@@ -163,24 +178,34 @@ updateControllables msg model =
         { model | entities = List.map (updateControllable newMovement) model.entities }
 
 
+updateControllable : Vec2 -> Entity -> Entity
+updateControllable newMovement entity =
+    case
+        [ getComponent Component.controllable entity
+        , getComponent Component.movement entity
+        ]
+    of
+        [ Just Controllable, Just (Movement movement) ] ->
+            updateComponent Component.movement entity (Movement newMovement)
+
+        _ ->
+            entity
+
+
 updateDynamics : Msg -> Model -> Model
 updateDynamics msg model =
-    { model | entities = List.map (updateDynamic model.timeDelta) model.entities }
-
-
-
--- Dynamic entity has Position, Speed and Movement
+    { model | entities = resolveCollision model.timeDelta model.entities }
 
 
 updateDynamic : Time -> Entity -> Entity
 updateDynamic timeDelta entity =
     case
-        ( getComponent Component.position entity
+        [ getComponent Component.position entity
         , getComponent Component.speed entity
         , getComponent Component.movement entity
-        )
+        ]
     of
-        ( Just (Position position), Just (Speed speed), Just (Movement movement) ) ->
+        [ Just (Position position), Just (Speed speed), Just (Movement movement) ] ->
             movement
                 |> Vec2.scale speed
                 |> Vec2.scale timeDelta
@@ -192,23 +217,97 @@ updateDynamic timeDelta entity =
             entity
 
 
+resolveCollision : Time -> List Entity -> List Entity
+resolveCollision timeDelta entities =
+    let
+        makeCheckList =
+            List.map (\x -> ( True, x )) entities
 
--- Controllable entity has Movement which changes
--- according to input
+        canMove dt entity list =
+            not <| List.any (\e -> isColliding dt entity (Tuple.second e)) list
+
+        move dt checkList ( hasToMove, entity ) =
+            if hasToMove then
+                if canMove dt entity checkList then
+                    ( True, updateDynamic dt entity )
+                else
+                    ( True, entity )
+            else
+                ( False, entity )
+
+        resolveList dt checkList =
+            let
+                newList =
+                    List.map (move dt checkList) checkList
+            in
+                if dt < 0.001 then
+                    newList
+                else if List.any Tuple.first newList then
+                    resolveList (dt / 2) newList
+                else
+                    newList
+    in
+        resolveList timeDelta makeCheckList
+            |> List.map Tuple.second
 
 
-updateControllable : Vec2 -> Entity -> Entity
-updateControllable newMovement entity =
+isColliding : Time -> Entity -> Entity -> Bool
+isColliding timeDelta entityA entityB =
+    let
+        newPosition x =
+            x.movement
+                |> Vec2.scale x.speed
+                |> Vec2.scale timeDelta
+                |> Vec2.add x.position
+    in
+        case ( getCollider entityA, getCollider entityB ) of
+            ( Just a, Just b ) ->
+                let
+                    newA =
+                        newPosition a
+
+                    newB =
+                        newPosition b
+                in
+                    if a == b then
+                        False
+                    else
+                        (Vec2.getX newA < Vec2.getX newB + Tuple.first b.box)
+                            && (Vec2.getX newA + Tuple.first a.box > Vec2.getX newB)
+                            && (Vec2.getY newA < Vec2.getY newB + Tuple.second b.box)
+                            && (Vec2.getY newA + Tuple.second a.box > Vec2.getY newB)
+
+            _ ->
+                False
+
+
+type alias Collider =
+    { position : Vec2
+    , speed : Float
+    , movement : Vec2
+    , box : ( Float, Float )
+    }
+
+
+getCollider : Entity -> Maybe Collider
+getCollider entity =
     case
-        ( getComponent Component.controllable entity
+        [ getComponent Component.position entity
+        , getComponent Component.box entity
+        , getComponent Component.speed entity
         , getComponent Component.movement entity
-        )
+        ]
     of
-        ( Just Controllable, Just (Movement movement) ) ->
-            updateComponent Component.movement entity (Movement newMovement)
+        [ Just (Position position), Just (Box width height), Just (Speed speed), Just (Movement movement) ] ->
+            Just <|
+                { position = position
+                , box = ( width, height )
+                , movement = movement
+                , speed = speed
+                }
 
         _ ->
-            entity
+            Nothing
 
 
 
@@ -281,12 +380,11 @@ viewMap model =
 viewBox : Entity -> Maybe (Svg msg)
 viewBox entity =
     case
-        ( getComponent Component.position entity
-        , getComponent Component.width entity
-        , getComponent Component.height entity
-        )
+        [ getComponent Component.position entity
+        , getComponent Component.box entity
+        ]
     of
-        ( Just (Position position), Just (Width width), Just (Height height) ) ->
+        [ Just (Position position), Just (Box width height) ] ->
             Just
                 (rect
                     [ A.x <| String.fromFloat <| Vec2.getX position
