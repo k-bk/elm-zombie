@@ -10,6 +10,7 @@ import Component
         , updateComponent
         )
 import Debug
+import Dict exposing (Dict(..))
 import Html exposing (Html, div, text)
 import Html.Attributes exposing (style)
 import Json.Decode as Decode
@@ -23,15 +24,12 @@ import Vector2 as Vec2 exposing (Vec2(..))
 
 
 type alias Model =
-    { entities : List Entity
+    { entities : Dict Int Entity
     , timeDelta : Time
     , timeDeltaHistory : List Time
     , input : List Key
+    , maxId : Int
     }
-
-
-type alias Id =
-    Int
 
 
 type alias Time =
@@ -41,47 +39,50 @@ type alias Time =
 initModel : Model
 initModel =
     let
+        addEntity entity model =
+            { model
+                | maxId = model.maxId + 1
+                , entities = Dict.insert (model.maxId + 1) entity model.entities
+            }
+
         player =
-            ( 1
-            , [ Position (Vec2 1 2)
-              , Speed 3
-              , Movement Vec2.null
-              , Box 1 2
-              , Controllable
-              ]
-            )
+            [ Position (Vec2 1 2)
+            , Speed 3
+            , Direction Vec2.null
+            , Size ( 1, 2 )
+            , Controllable
+            ]
 
         flyingBird =
-            ( 2
-            , [ Position (Vec2 0 5)
-              , Speed 0
-              , Movement (Vec2 1 0)
-              , Box 2 0.5
-              ]
-            )
-
-        block x y id =
-            ( id
-            , [ Position (Vec2 x y)
-              , Speed 0
-              , Movement Vec2.null
-              , Box 1 1
-              ]
-            )
-    in
-        { entities =
-            [ player
-            , flyingBird
-            , block 2 2 3
-            , block 2 3 4
-            , block 5 5 5
-            , block 5 6 6
-            , block 7 8 7
+            [ Position (Vec2 0 5)
+            , Speed 0
+            , Direction (Vec2 1 0)
+            , Size ( 2, 0.5 )
             ]
-        , timeDelta = 0
-        , timeDeltaHistory = []
-        , input = []
-        }
+
+        block x y =
+            [ Position (Vec2 x y)
+            , Speed 0
+            , Direction Vec2.null
+            , Size ( 1, 1 )
+            ]
+
+        emptyModel =
+            { entities = Dict.empty
+            , timeDelta = 0
+            , timeDeltaHistory = []
+            , input = []
+            , maxId = 0
+            }
+    in
+        emptyModel
+            |> addEntity player
+            |> addEntity flyingBird
+            |> addEntity (block 2 2)
+            |> addEntity (block 2 3)
+            |> addEntity (block 5 5)
+            |> addEntity (block 5 6)
+            |> addEntity (block 7 8)
 
 
 init : () -> ( Model, Cmd msg )
@@ -112,9 +113,9 @@ update msg model =
                 Tick timeDelta ->
                     -- update time sync things
                     model
-                        |> updateTime msg
-                        |> updateControllables msg
-                        |> updateDynamics msg
+                        |> updateTime timeDelta
+                        |> updateAllControllable
+                        |> updateAllDynamic
 
                 _ ->
                     -- update frame async things
@@ -147,48 +148,42 @@ updateInput msg model =
                 model
 
 
-updateTime : Msg -> Model -> Model
-updateTime msg model =
-    case msg of
-        Tick timeDelta ->
-            { model
-                | timeDelta = timeDelta
-                , timeDeltaHistory =
-                    List.take 15
-                        (timeDelta :: model.timeDeltaHistory)
-            }
-
-        _ ->
-            model
+updateTime : Time -> Model -> Model
+updateTime timeDelta model =
+    { model
+        | timeDelta = timeDelta
+        , timeDeltaHistory =
+            List.take 10 (timeDelta :: model.timeDeltaHistory)
+    }
 
 
-updateControllables : Msg -> Model -> Model
-updateControllables msg model =
+updateAllControllable : Model -> Model
+updateAllControllable model =
     let
-        newMovement =
+        newDirection =
             keysToVector model.input
                 |> Vec2.normalize
     in
-        { model | entities = List.map (updateControllable newMovement) model.entities }
+        { model | entities = Dict.map (\_ -> updateControllable newDirection) model.entities }
 
 
 updateControllable : Vec2 -> Entity -> Entity
-updateControllable newMovement entity =
+updateControllable newDirection entity =
     case
         [ getComponent Component.controllable entity
-        , getComponent Component.movement entity
+        , getComponent Component.direction entity
         ]
     of
-        [ Just Controllable, Just (Movement movement) ] ->
-            updateComponent Component.movement entity (Movement newMovement)
+        [ Just Controllable, Just (Direction direction) ] ->
+            updateComponent Component.direction entity (Direction newDirection)
 
         _ ->
             entity
 
 
-updateDynamics : Msg -> Model -> Model
-updateDynamics msg model =
-    { model | entities = resolveCollision model.timeDelta model.entities }
+updateAllDynamic : Model -> Model
+updateAllDynamic model =
+    { model | entities = Dict.map (\_ -> updateDynamic model.timeDelta) model.entities }
 
 
 updateDynamic : Time -> Entity -> Entity
@@ -196,11 +191,11 @@ updateDynamic timeDelta entity =
     case
         [ getComponent Component.position entity
         , getComponent Component.speed entity
-        , getComponent Component.movement entity
+        , getComponent Component.direction entity
         ]
     of
-        [ Just (Position position), Just (Speed speed), Just (Movement movement) ] ->
-            movement
+        [ Just (Position position), Just (Speed speed), Just (Direction direction) ] ->
+            direction
                 |> Vec2.scale speed
                 |> Vec2.scale timeDelta
                 |> Vec2.add position
@@ -211,75 +206,79 @@ updateDynamic timeDelta entity =
             entity
 
 
-resolveCollision : Time -> List Entity -> List Entity
-resolveCollision timeDelta entities =
-    let
-        makeCheckList =
-            List.map (\x -> ( True, x )) entities
 
-        canMove dt entity list =
-            not <| List.any (\e -> isColliding dt entity (Tuple.second e)) list
+{-
 
-        move dt checkList ( hasToMove, entity ) =
-            if hasToMove then
-                if canMove dt entity checkList then
-                    ( True, updateDynamic dt entity )
-                else
-                    ( True, entity )
-            else
-                ( False, entity )
+   resolveCollision : Time -> Dict Int Entity -> Dict Int Entity
+   resolveCollision timeDelta entities =
+       let
+           makeCheckList =
+               Dict.map (\x -> ( True, x )) entities
 
-        resolveList dt checkList =
-            let
-                newList =
-                    List.map (move dt checkList) checkList
-            in
-                if dt < 0.001 then
-                    newList
-                else if List.any Tuple.first newList then
-                    resolveList (dt / 2) newList
-                else
-                    newList
-    in
-        resolveList timeDelta makeCheckList
-            |> List.map Tuple.second
+           canMove dt entity list =
+               not <| List.any (\e -> isColliding dt entity (Tuple.second e)) list
+
+           move dt checkList ( hasToMove, entity ) =
+               if hasToMove then
+                   if canMove dt entity checkList then
+                       ( True, updateDynamic dt entity )
+                   else
+                       ( True, entity )
+               else
+                   ( False, entity )
+
+           resolveList dt checkList =
+               let
+                   newList =
+                       List.map (move dt checkList) checkList
+               in
+                   if dt < 0.001 then
+                       newList
+                   else if List.any Tuple.first newList then
+                       resolveList (dt / 2) newList
+                   else
+                       newList
+       in
+           resolveList timeDelta makeCheckList
+               |> List.map Tuple.second
 
 
-isColliding : Time -> Entity -> Entity -> Bool
-isColliding timeDelta entityA entityB =
-    let
-        newPosition x =
-            x.movement
-                |> Vec2.scale x.speed
-                |> Vec2.scale timeDelta
-                |> Vec2.add x.position
-    in
-        case ( getCollider entityA, getCollider entityB ) of
-            ( Just a, Just b ) ->
-                let
-                    newA =
-                        newPosition a
+   isColliding : Time -> Entity -> Entity -> Bool
+   isColliding timeDelta entityA entityB =
+       let
+           newPosition x =
+               x.direction
+                   |> Vec2.scale x.speed
+                   |> Vec2.scale timeDelta
+                   |> Vec2.add x.position
+       in
+           case ( getCollider entityA, getCollider entityB ) of
+               ( Just a, Just b ) ->
+                   let
+                       newA =
+                           newPosition a
 
-                    newB =
-                        newPosition b
-                in
-                    if a == b then
-                        False
-                    else
-                        (Vec2.getX newA < Vec2.getX newB + Tuple.first b.box)
-                            && (Vec2.getX newA + Tuple.first a.box > Vec2.getX newB)
-                            && (Vec2.getY newA < Vec2.getY newB + Tuple.second b.box)
-                            && (Vec2.getY newA + Tuple.second a.box > Vec2.getY newB)
+                       newB =
+                           newPosition b
+                   in
+                       if a == b then
+                           False
+                       else
+                           (Vec2.getX newA < Vec2.getX newB + Tuple.first b.size)
+                               && (Vec2.getX newA + Tuple.first a.size > Vec2.getX newB)
+                               && (Vec2.getY newA < Vec2.getY newB + Tuple.second b.size)
+                               && (Vec2.getY newA + Tuple.second a.size > Vec2.getY newB)
 
-            _ ->
-                False
+               _ ->
+                   False
+-}
 
 
 type alias Collider =
     { position : Vec2
     , speed : Float
-    , movement : Vec2
-    , box : ( Float, Float )
+    , direction : Vec2
+    , size : ( Float, Float )
     }
 
 
@@ -287,16 +286,16 @@ getCollider : Entity -> Maybe Collider
 getCollider entity =
     case
         [ getComponent Component.position entity
-        , getComponent Component.box entity
+        , getComponent Component.size entity
         , getComponent Component.speed entity
-        , getComponent Component.movement entity
+        , getComponent Component.direction entity
         ]
     of
-        [ Just (Position position), Just (Box width height), Just (Speed speed), Just (Movement movement) ] ->
+        [ Just (Position position), Just (Size ( width, height )), Just (Speed speed), Just (Direction direction) ] ->
             Just <|
                 { position = position
-                , box = ( width, height )
-                , movement = movement
+                , size = ( width, height )
+                , direction = direction
                 , speed = speed
                 }
 
@@ -367,29 +366,27 @@ view model =
 viewMap : Model -> Html msg
 viewMap model =
     svg [ A.viewBox "0 0 20 15" ]
-        (onlyValues <| List.map viewBox model.entities)
+        (Dict.values <| Dict.map (\_ -> viewBox) model.entities)
 
 
-viewBox : Entity -> Maybe (Svg msg)
+viewBox : Entity -> Svg msg
 viewBox entity =
     case
         [ getComponent Component.position entity
-        , getComponent Component.box entity
+        , getComponent Component.size entity
         ]
     of
-        [ Just (Position position), Just (Box width height) ] ->
-            Just
-                (rect
-                    [ A.x <| String.fromFloat <| Vec2.getX position
-                    , A.y <| String.fromFloat <| Vec2.getY position
-                    , A.width <| String.fromFloat width
-                    , A.height <| String.fromFloat height
-                    ]
-                    []
-                )
+        [ Just (Position position), Just (Size ( width, height )) ] ->
+            rect
+                [ A.x <| String.fromFloat <| Vec2.getX position
+                , A.y <| String.fromFloat <| Vec2.getY position
+                , A.width <| String.fromFloat width
+                , A.height <| String.fromFloat height
+                ]
+                []
 
         _ ->
-            Nothing
+            svg [] []
 
 
 
