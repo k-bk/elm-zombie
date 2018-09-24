@@ -3,6 +3,7 @@ module Game exposing (..)
 import Browser
 import Browser.Events exposing (Visibility)
 import Debug
+import Dict exposing (Dict(..))
 import Html exposing (Html, div, text)
 import Html.Attributes exposing (style)
 import Json.Decode as Decode
@@ -16,45 +17,35 @@ import Vector2 as Vec2 exposing (Vec2(..))
 -- ENTITIES
 
 
-type alias Id =
-    Int
-
-
-type alias Time =
-    Float
-
-
-type alias Dynamic a =
+type alias Controllable a =
     { a
-        | position : Vec2
-        , speed : Float
-        , direction : Vec2
+        | direction : Dict Int Vec2
+        , controllable : Dict Int ()
     }
 
 
 type alias Colliding a =
     { a
-        | position : Vec2
-        , box : Size
+        | position : Dict Int Vec2
+        , speed : Dict Int Float
+        , direction : Dict Int Vec2
+        , size : Dict Int Size
     }
 
 
-type alias Controllable a =
+type alias Dynamic a =
     { a
-        | controllable : ()
-        , direction : Vec2
+        | position : Dict Int Vec2
+        , speed : Dict Int Float
+        , direction : Dict Int Vec2
     }
 
 
 type alias Visible a =
     { a
-        | position : Vec2
-        , box : Size
+        | position : Dict Int Vec2
+        , size : Dict Int Size
     }
-
-
-type alias Entity =
-    { id : Int }
 
 
 
@@ -62,51 +53,68 @@ type alias Entity =
 
 
 type alias Model =
-    { player : Dynamic (Colliding (Controllable (Visible Entity)))
-    , enemies : List (Dynamic (Colliding (Visible Entity)))
-    , obstacles : List (Colliding (Visible Entity))
-    , timeDelta : Time
+    { timeDelta : Time
     , timeDeltaHistory : List Time
     , input : List Key
+    , maxId : Int
+
+    -- Components
+    , position : Dict Int Vec2
+    , speed : Dict Int Float
+    , direction : Dict Int Vec2
+    , size : Dict Int Size
+    , controllable : Dict Int ()
     }
 
 
 initModel : Model
 initModel =
     let
-        player : Dynamic (Colliding (Controllable (Visible Entity)))
-        player =
-            { id = 1
-            , position = Vec2 2 4
-            , speed = 5
-            , direction = Vec2.null
-            , box = Size 1 2
-            , controllable = ()
-            }
+        addPlayer : Model -> Model
+        addPlayer model =
+            let
+                updateComponent component value =
+                    Dict.insert (model.maxId + 1) value component
+            in
+                { model
+                    | position = updateComponent model.position <| Vec2 2 4
+                    , speed = updateComponent model.speed 5
+                    , direction = updateComponent model.direction Vec2.null
+                    , size = updateComponent model.size <| Size 1 2
+                    , controllable = updateComponent model.controllable ()
+                    , maxId = model.maxId + 1
+                }
 
-        flyingBird : Dynamic (Colliding (Visible Entity))
-        flyingBird =
-            { id = 2
-            , position = Vec2 2 4
-            , speed = 1
-            , direction = Vec2 1 0
-            , box = Size 2 1
-            }
+        addBlock : Float -> Float -> Model -> Model
+        addBlock x y model =
+            let
+                updateComponent component value =
+                    Dict.insert (model.maxId + 1) value component
+            in
+                { model
+                    | position = updateComponent model.position <| Vec2 x y
+                    , size = updateComponent model.size <| Size 2 2
+                }
 
-        block : Float -> Float -> Int -> Colliding (Visible Entity)
-        block x y id =
-            { id = id
-            , position = Vec2 x y
-            , box = Size 2 2
+        emptyModel : Model
+        emptyModel =
+            { timeDelta = 0
+            , timeDeltaHistory = []
+            , input = []
+            , maxId = 0
+
+            -- Components
+            , position = Dict.empty
+            , speed = Dict.empty
+            , direction = Dict.empty
+            , size = Dict.empty
+            , controllable = Dict.empty
             }
     in
-        { player = player
-        , enemies = [ flyingBird ]
-        , obstacles = [ block 2 2 3, block 2 5 4, block 5 5 5 ]
-        , timeDelta = 0
-        , timeDeltaHistory = []
-        , input = []
-        }
+        emptyModel
+            |> addPlayer
+            |> addBlock 3 3
+            |> addBlock 4 5
 
 
 init : () -> ( Model, Cmd msg )
@@ -137,10 +145,9 @@ update msg model =
                 Tick timeDelta ->
                     -- update time sync things
                     model
-                        |> updateTime msg
-                        |> updateAllControllable msg
-                        |> updateAllDynamic msg
-                        |> updateAllColliding msg
+                        |> updateTime timeDelta
+                        |> updateAllControllable model.input
+                        |> updateAllDynamic timeDelta
 
                 _ ->
                     -- update frame async things
@@ -173,55 +180,132 @@ updateInput msg model =
                 model
 
 
-updateTime : Msg -> Model -> Model
-updateTime msg model =
-    case msg of
-        Tick timeDelta ->
-            { model
-                | timeDelta = timeDelta
-                , timeDeltaHistory =
-                    List.take 10
-                        (timeDelta :: model.timeDeltaHistory)
-            }
-
-        _ ->
-            model
-
-
-updateAllControllable : Msg -> Model -> Model
-updateAllControllable msg ({ player } as model) =
-    let
-        newDirection =
-            keysToVector model.input
-                |> Vec2.normalize
-    in
-        { model | player = { player | direction = newDirection } }
-
-
-updateAllDynamic : Msg -> Model -> Model
-updateAllDynamic msg ({ player, enemies, timeDelta } as model) =
+updateTime : Time -> Model -> Model
+updateTime timeDelta model =
     { model
-        | player = (updateDynamic timeDelta) player
-        , enemies = List.map (updateDynamic timeDelta) enemies
+        | timeDelta = timeDelta
+        , timeDeltaHistory =
+            List.take 10 (timeDelta :: model.timeDeltaHistory)
     }
 
 
-updateDynamic : Time -> Dynamic a -> Dynamic a
-updateDynamic timeDelta ({ position, speed, direction } as entity) =
+updateAllControllable : List Key -> Controllable a -> Controllable a
+updateAllControllable input controllable =
     let
-        newPosition =
+        newDirection =
+            keysToVector input
+                |> Vec2.normalize
+    in
+        { controllable
+            | direction =
+                Dict.map (\_ _ -> newDirection)
+                    controllable.controllable
+        }
+
+
+updateAllDynamic : Time -> Dynamic a -> Dynamic a
+updateAllDynamic timeDelta dynamic =
+    let
+        getOnlyDynamic =
+            Dict.keys dynamic.position
+                |> List.filter (\id -> Dict.member id dynamic.speed)
+                |> List.filter (\id -> Dict.member id dynamic.direction)
+    in
+        getOnlyDynamic
+            |> List.foldl (updateDynamic timeDelta) dynamic
+
+
+updateDynamic : Time -> Int -> Dynamic a -> Dynamic a
+updateDynamic timeDelta id dynamic =
+    let
+        newPosition position speed direction =
             direction
                 |> Vec2.normalize
                 |> Vec2.scale speed
                 |> Vec2.scale timeDelta
                 |> Vec2.add position
     in
-        { entity | position = newPosition }
+        case
+            ( Dict.get id dynamic.position
+            , Dict.get id dynamic.speed
+            , Dict.get id dynamic.direction
+            )
+        of
+            ( Just position, Just speed, Just direction ) ->
+                { dynamic
+                    | position =
+                        dynamic.position
+                            |> Dict.insert id (newPosition position speed direction)
+                }
+
+            _ ->
+                dynamic
 
 
-updateAllColliding : Msg -> Model -> Model
-updateAllColliding msg ({ player, enemies, obstacles, timeDelta } as model) =
-    model
+
+{-
+   updateAllColliding : Msg -> Model -> Model
+   updateAllColliding msg model =
+       let
+           moveIfNoCollision timeDelta currentModel entity =
+               let
+                   newEntity =
+                       move timeDelta entity
+
+                   anyCollision =
+                       (List.map (move timeDelta) currentModel.enemies)
+                           |> List.any (isColliding newEntity)
+                           |> (||) (List.any (isColliding newEntity) (currentModel.obstacles))
+                           |> (||) (isColliding newEntity (move timeDelta currentModel.player))
+               in
+                   if anyCollision then
+                       entity
+                   else
+                       move timeDelta entity
+
+           moveAll timeDelta oldModel =
+               if timeDelta < 0.001 then
+                   oldModel
+               else
+                   let
+                       newModel =
+                           { oldModel
+                               | enemies = List.map (moveIfNoCollision timeDelta oldModel) model.enemies
+                               , player =
+                                   moveIfNoCollision timeDelta
+                                       oldModel
+                                       oldModel.player
+                           }
+                   in
+                       moveAll (timeDelta / 2) newModel
+
+           move : Time -> Dynamic (Colliding a) -> Dynamic (Colliding a)
+           move =
+               updateDynamic
+       in
+           moveAll model.timeDelta model
+-}
+
+
+isColliding : Int -> Int -> Colliding a -> Bool
+isColliding a b collidable =
+    let
+        checkAABB (Vec2 xA yA) (Size wA hA) (Vec2 xB yB) (Size wB hB) =
+            (xA < xB + wB) && (xA + wA > xB) && (yA < yB + hB) && (yA + hA > yB)
+    in
+        if a == b then
+            False
+        else
+            case
+                ( ( Dict.get a collidable.position, Dict.get b collidable.position )
+                , ( Dict.get a collidable.size, Dict.get b collidable.size )
+                )
+            of
+                ( ( Just positionA, Just positionB ), ( Just sizeA, Just sizeB ) ) ->
+                    checkAABB positionA sizeA positionB sizeB
+
+                _ ->
+                    False
 
 
 
@@ -259,20 +343,6 @@ updateAllColliding msg ({ player, enemies, obstacles, timeDelta } as model) =
            resolveList timeDelta makeCheckList
                |> List.map Tuple.second
 -}
-
-
-isColliding : Colliding a -> Colliding a -> Bool
-isColliding a b =
-    if a == b then
-        False
-    else
-        (Vec2.getX a.position < Vec2.getX b.position + Size.getWidth b.box)
-            && (Vec2.getX a.position + Size.getWidth a.box > Vec2.getX b.position)
-            && (Vec2.getY a.position < Vec2.getY b.position + Size.getHeight b.box)
-            && (Vec2.getY a.position + Size.getHeight a.box > Vec2.getY b.position)
-
-
-
 -- SUBSCRIPTIONS
 
 
@@ -335,20 +405,31 @@ view model =
 viewMap : Model -> Html msg
 viewMap model =
     svg [ A.viewBox "0 0 20 15" ] <|
-        [ viewVisible model.player ]
-            ++ (List.map viewVisible model.enemies)
-            ++ (List.map viewVisible model.obstacles)
+        showVisible model
 
 
-viewVisible : Visible a -> Svg msg
-viewVisible { position, box } =
-    rect
-        [ A.x <| String.fromFloat <| Vec2.getX position
-        , A.y <| String.fromFloat <| Vec2.getY position
-        , A.width <| String.fromFloat <| Size.getWidth box
-        , A.height <| String.fromFloat <| Size.getHeight box
-        ]
-        []
+showVisible : Visible a -> List (Svg msg)
+showVisible visible =
+    let
+        showEntity id =
+            case
+                ( Dict.get id visible.position
+                , Dict.get id visible.size
+                )
+            of
+                ( Just (Vec2 x y), Just (Size width height) ) ->
+                    rect
+                        [ A.x <| String.fromFloat x
+                        , A.y <| String.fromFloat y
+                        , A.width <| String.fromFloat width
+                        , A.height <| String.fromFloat height
+                        ]
+                        []
+
+                _ ->
+                    svg [] []
+    in
+        List.map showEntity <| Dict.keys visible.position
 
 
 
@@ -362,6 +443,14 @@ main =
         , subscriptions = subscriptions
         , view = view
         }
+
+
+
+-- UTILITIES
+
+
+type alias Time =
+    Float
 
 
 
