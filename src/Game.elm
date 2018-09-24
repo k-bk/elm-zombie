@@ -4,6 +4,7 @@ import Browser
 import Browser.Events exposing (Visibility)
 import Debug
 import Dict exposing (Dict(..))
+import Entity
 import Html exposing (Html, div, text)
 import Html.Attributes exposing (style)
 import Json.Decode as Decode
@@ -12,41 +13,6 @@ import Size exposing (Size(..))
 import Svg exposing (Svg, svg, rect)
 import Svg.Attributes as A
 import Vector2 as Vec2 exposing (Vec2(..))
-
-
--- ENTITIES
-
-
-type alias Controllable a =
-    { a
-        | direction : Dict Int Vec2
-        , controllable : Dict Int ()
-    }
-
-
-type alias Colliding a =
-    { a
-        | position : Dict Int Vec2
-        , speed : Dict Int Float
-        , direction : Dict Int Vec2
-        , size : Dict Int Size
-    }
-
-
-type alias Dynamic a =
-    { a
-        | position : Dict Int Vec2
-        , speed : Dict Int Float
-        , direction : Dict Int Vec2
-    }
-
-
-type alias Visible a =
-    { a
-        | position : Dict Int Vec2
-        , size : Dict Int Size
-    }
-
 
 
 -- MODEL
@@ -218,29 +184,23 @@ updateAllDynamic timeDelta components =
 
 updateDynamic : Time -> Int -> Dynamic a -> Dynamic a
 updateDynamic timeDelta id components =
-    let
-        newPosition position speed direction =
-            direction
-                |> Vec2.normalize
-                |> Vec2.scale speed
-                |> Vec2.scale timeDelta
-                |> Vec2.add position
-    in
-        case
-            ( Dict.get id components.position
-            , Dict.get id components.speed
-            , Dict.get id components.direction
-            )
-        of
-            ( Just position, Just speed, Just direction ) ->
+    case getDynamic components id of
+        Just { position, speed, direction } ->
+            let
+                newPosition =
+                    direction
+                        |> Vec2.normalize
+                        |> Vec2.scale speed
+                        |> Vec2.scale timeDelta
+                        |> Vec2.add position
+            in
                 { components
                     | position =
-                        components.position
-                            |> Dict.insert id (newPosition position speed direction)
+                        components.position |> Dict.insert id newPosition
                 }
 
-            _ ->
-                components
+        Nothing ->
+            components
 
 
 
@@ -297,13 +257,9 @@ isColliding a b components =
         if a == b then
             False
         else
-            case
-                ( ( Dict.get a components.position, Dict.get b components.position )
-                , ( Dict.get a components.size, Dict.get b components.size )
-                )
-            of
-                ( ( Just positionA, Just positionB ), ( Just sizeA, Just sizeB ) ) ->
-                    checkAABB positionA sizeA positionB sizeB
+            case ( getColliding components a, getColliding components b ) of
+                ( Just a, Just b ) ->
+                    checkAABB a.position a.size b.position b.size
 
                 _ ->
                     False
@@ -406,31 +362,27 @@ view model =
 viewMap : Model -> Html msg
 viewMap model =
     svg [ A.viewBox "0 0 20 15" ] <|
-        showVisible model
+        showAllVisible model
 
 
-showVisible : Visible a -> List (Svg msg)
-showVisible visible =
+showAllVisible : Visible a -> List (Svg msg)
+showAllVisible components =
     let
-        showEntity id =
-            case
-                ( Dict.get id visible.position
-                , Dict.get id visible.size
-                )
-            of
-                ( Just (Vec2 x y), Just (Size width height) ) ->
+        showVisible id =
+            case getVisible components id of
+                Just { position, size } ->
                     rect
-                        [ A.x <| String.fromFloat x
-                        , A.y <| String.fromFloat y
-                        , A.width <| String.fromFloat width
-                        , A.height <| String.fromFloat height
+                        [ A.x <| String.fromFloat <| Vec2.getX position
+                        , A.y <| String.fromFloat <| Vec2.getY position
+                        , A.width <| String.fromFloat <| Size.getWidth size
+                        , A.height <| String.fromFloat <| Size.getHeight size
                         ]
                         []
 
-                _ ->
+                Nothing ->
                     svg [] []
     in
-        List.map showEntity <| Dict.keys visible.position
+        List.map showVisible <| Dict.keys components.position
 
 
 
@@ -452,6 +404,94 @@ main =
 
 type alias Time =
     Float
+
+
+
+-- COMPONENTS
+
+
+type alias Controllable a =
+    { a
+        | direction : Dict Int Vec2
+        , controllable : Dict Int ()
+    }
+
+
+type alias Colliding a =
+    { a
+        | position : Dict Int Vec2
+        , speed : Dict Int Float
+        , direction : Dict Int Vec2
+        , size : Dict Int Size
+    }
+
+
+type alias Dynamic a =
+    { a
+        | position : Dict Int Vec2
+        , speed : Dict Int Float
+        , direction : Dict Int Vec2
+    }
+
+
+type alias Visible a =
+    { a
+        | position : Dict Int Vec2
+        , size : Dict Int Size
+    }
+
+
+getDynamic : Dynamic a -> Int -> Maybe Entity.Dynamic
+getDynamic components id =
+    case
+        ( Dict.get id components.position
+        , Dict.get id components.speed
+        , Dict.get id components.direction
+        )
+    of
+        ( Just position, Just speed, Just direction ) ->
+            Just <|
+                { position = position
+                , speed = speed
+                , direction = direction
+                }
+
+        _ ->
+            Nothing
+
+
+getVisible : Visible a -> Int -> Maybe Entity.Visible
+getVisible components id =
+    case
+        ( Dict.get id components.position
+        , Dict.get id components.size
+        )
+    of
+        ( Just position, Just size ) ->
+            Just <|
+                { position = position
+                , size = size
+                }
+
+        _ ->
+            Nothing
+
+
+getColliding : Colliding a -> Int -> Maybe Entity.Colliding
+getColliding components id =
+    case
+        ( Dict.get id components.position
+        , Dict.get id components.size
+        )
+    of
+        ( Just position, Just size ) ->
+            Just <|
+                { position = position
+                , size = size
+                }
+
+        _ ->
+            Nothing
 
 
 
