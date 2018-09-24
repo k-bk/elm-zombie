@@ -173,13 +173,12 @@ updateAllControllable input components =
 updateAllDynamic : Time -> Dynamic a -> Dynamic a
 updateAllDynamic timeDelta components =
     let
-        getOnlyDynamic =
+        getDynamicList =
             Dict.keys components.position
                 |> List.filter (\id -> Dict.member id components.speed)
                 |> List.filter (\id -> Dict.member id components.direction)
     in
-        getOnlyDynamic
-            |> List.foldl (updateDynamic timeDelta) components
+        List.foldl (updateDynamic timeDelta) components getDynamicList
 
 
 updateDynamic : Time -> Int -> Dynamic a -> Dynamic a
@@ -203,61 +202,34 @@ updateDynamic timeDelta id components =
             components
 
 
+updateAllColliding : Colliding a -> Colliding a -> Colliding a
+updateAllColliding old new =
+    let
+        getCollidingList =
+            Dict.keys old.position
+                |> List.filter (\id -> Dict.member id old.size)
+                |> List.filter (\id -> Dict.member id new.position)
+                |> List.filter (\id -> Dict.member id new.size)
 
-{-
-   updateAllColliding : Msg -> Model -> Model
-   updateAllColliding msg model =
-       let
-           moveIfNoCollision timeDelta currentModel entity =
-               let
-                   newEntity =
-                       move timeDelta entity
-
-                   anyCollision =
-                       (List.map (move timeDelta) currentModel.enemies)
-                           |> List.any (isColliding newEntity)
-                           |> (||) (List.any (isColliding newEntity) (currentModel.obstacles))
-                           |> (||) (isColliding newEntity (move timeDelta currentModel.player))
-               in
-                   if anyCollision then
-                       entity
-                   else
-                       move timeDelta entity
-
-           moveAll timeDelta oldModel =
-               if timeDelta < 0.001 then
-                   oldModel
-               else
-                   let
-                       newModel =
-                           { oldModel
-                               | enemies = List.map (moveIfNoCollision timeDelta oldModel) model.enemies
-                               , player =
-                                   moveIfNoCollision timeDelta
-                                       oldModel
-                                       oldModel.player
-                           }
-                   in
-                       moveAll (timeDelta / 2) newModel
-
-           move : Time -> Dynamic (Colliding a) -> Dynamic (Colliding a)
-           move =
-               updateDynamic
-       in
-           moveAll model.timeDelta model
--}
+        anyCollisionWith id =
+            List.any (isColliding new id) getCollidingList
+    in
+        if List.any anyCollisionWith getCollidingList then
+            old
+        else
+            new
 
 
-isColliding : Int -> Int -> Colliding a -> Bool
-isColliding a b components =
+isColliding : Colliding a -> Int -> Int -> Bool
+isColliding components idA idB =
     let
         checkAABB (Vec2 xA yA) (Size wA hA) (Vec2 xB yB) (Size wB hB) =
             (xA < xB + wB) && (xA + wA > xB) && (yA < yB + hB) && (yA + hA > yB)
     in
-        if a == b then
+        if idA == idB then
             False
         else
-            case ( getColliding components a, getColliding components b ) of
+            case ( getColliding components idA, getColliding components idB ) of
                 ( Just a, Just b ) ->
                     checkAABB a.position a.size b.position b.size
 
