@@ -94,6 +94,7 @@ initModel =
                 { model
                     | position = updateComponent model.position <| Vec2 x y
                     , size = updateComponent model.size <| Size 2 2
+                    , maxId = model.maxId + 1
                 }
 
         emptyModel : Model
@@ -190,33 +191,33 @@ updateTime timeDelta model =
 
 
 updateAllControllable : List Key -> Controllable a -> Controllable a
-updateAllControllable input controllable =
+updateAllControllable input components =
     let
         newDirection =
             keysToVector input
                 |> Vec2.normalize
     in
-        { controllable
+        { components
             | direction =
                 Dict.map (\_ _ -> newDirection)
-                    controllable.controllable
+                    components.controllable
         }
 
 
 updateAllDynamic : Time -> Dynamic a -> Dynamic a
-updateAllDynamic timeDelta dynamic =
+updateAllDynamic timeDelta components =
     let
         getOnlyDynamic =
-            Dict.keys dynamic.position
-                |> List.filter (\id -> Dict.member id dynamic.speed)
-                |> List.filter (\id -> Dict.member id dynamic.direction)
+            Dict.keys components.position
+                |> List.filter (\id -> Dict.member id components.speed)
+                |> List.filter (\id -> Dict.member id components.direction)
     in
         getOnlyDynamic
-            |> List.foldl (updateDynamic timeDelta) dynamic
+            |> List.foldl (updateDynamic timeDelta) components
 
 
 updateDynamic : Time -> Int -> Dynamic a -> Dynamic a
-updateDynamic timeDelta id dynamic =
+updateDynamic timeDelta id components =
     let
         newPosition position speed direction =
             direction
@@ -226,20 +227,20 @@ updateDynamic timeDelta id dynamic =
                 |> Vec2.add position
     in
         case
-            ( Dict.get id dynamic.position
-            , Dict.get id dynamic.speed
-            , Dict.get id dynamic.direction
+            ( Dict.get id components.position
+            , Dict.get id components.speed
+            , Dict.get id components.direction
             )
         of
             ( Just position, Just speed, Just direction ) ->
-                { dynamic
+                { components
                     | position =
-                        dynamic.position
+                        components.position
                             |> Dict.insert id (newPosition position speed direction)
                 }
 
             _ ->
-                dynamic
+                components
 
 
 
@@ -288,7 +289,7 @@ updateDynamic timeDelta id dynamic =
 
 
 isColliding : Int -> Int -> Colliding a -> Bool
-isColliding a b collidable =
+isColliding a b components =
     let
         checkAABB (Vec2 xA yA) (Size wA hA) (Vec2 xB yB) (Size wB hB) =
             (xA < xB + wB) && (xA + wA > xB) && (yA < yB + hB) && (yA + hA > yB)
@@ -297,8 +298,8 @@ isColliding a b collidable =
             False
         else
             case
-                ( ( Dict.get a collidable.position, Dict.get b collidable.position )
-                , ( Dict.get a collidable.size, Dict.get b collidable.size )
+                ( ( Dict.get a components.position, Dict.get b components.position )
+                , ( Dict.get a components.size, Dict.get b components.size )
                 )
             of
                 ( ( Just positionA, Just positionB ), ( Just sizeA, Just sizeB ) ) ->
