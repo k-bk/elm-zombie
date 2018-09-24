@@ -4,8 +4,8 @@ module Component
         , Component(..)
         , position
         , speed
-        , movement
-        , box
+        , direction
+        , size
         , controllable
         , getComponent
         , updateComponent
@@ -47,14 +47,14 @@ import Vector2 as Vec2 exposing (Vec2(..))
 
 
 type alias Entity =
-    ( Int, List Component )
+    List Component
 
 
 type Component
     = Position Vec2
     | Speed Float
-    | Movement Vec2
-    | Box Float Float
+    | Direction Vec2
+    | Size ( Float, Float )
     | Controllable
 
 
@@ -68,14 +68,14 @@ speed =
     Speed 0.0
 
 
-movement : Component
-movement =
-    Movement Vec2.null
+direction : Component
+direction =
+    Direction Vec2.null
 
 
-box : Component
-box =
-    Box 0 0
+size : Component
+size =
+    Size ( 0, 0 )
 
 
 controllable : Component
@@ -92,10 +92,10 @@ isOfType type1 type2 =
         ( Speed _, Speed _ ) ->
             True
 
-        ( Movement _, Movement _ ) ->
+        ( Direction _, Direction _ ) ->
             True
 
-        ( Box _ _, Box _ _ ) ->
+        ( Size _, Size _ ) ->
             True
 
         ( Controllable, Controllable ) ->
@@ -106,25 +106,21 @@ isOfType type1 type2 =
 
 
 updateComponent : Component -> Entity -> Component -> Entity
-updateComponent componentType ( id, components ) newValue =
-    let
-        updateList list =
-            case list of
-                component :: rest ->
-                    if isOfType componentType component then
-                        newValue :: rest
-                    else
-                        component :: (updateList rest)
+updateComponent componentType entity newValue =
+    case entity of
+        component :: rest ->
+            if isOfType componentType component then
+                newValue :: rest
+            else
+                component :: (updateComponent componentType rest newValue)
 
-                [] ->
-                    []
-    in
-        ( id, updateList components )
+        [] ->
+            []
 
 
 getComponent : Component -> Entity -> Maybe Component
-getComponent componentType ( _, list ) =
-    List.head <| List.filter (isOfType componentType) list
+getComponent componentType entity =
+    List.head <| List.filter (isOfType componentType) entity
 
 
 
@@ -133,11 +129,11 @@ getComponent componentType ( _, list ) =
 
 testList : List Entity
 testList =
-    [ ( 1, [ Position Vec2.null ] )
-    , ( 2, [ Position (Vec2 1 2) ] )
-    , ( 3, [ Position (Vec2 2 3), Speed 2 ] )
-    , ( 4, [ Speed 5 ] )
-    , ( 5, [ Position (Vec2 33 3) ] )
+    [ [ Position Vec2.null ]
+    , [ Position (Vec2 1 2) ]
+    , [ Position (Vec2 2 3), Speed 2 ]
+    , [ Speed 5 ]
+    , [ Position (Vec2 33 3) ]
     ]
 
 
